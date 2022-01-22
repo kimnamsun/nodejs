@@ -6,10 +6,16 @@ const path = require('path');
 const session = require('express-session');
 const nunjucks = require('nunjucks');
 const dotenv = require('dotenv');
+const passport = require('passport');
 
 // dotenv는 최대한 위에 적어주는 것이 좋다.
 dotenv.config();
 const pageRouter = require('./routes/page');
+const authRouter = require('./routes/auth');
+const postRouter = require('./routes/post');
+const userRouter = require('./routes/user');
+const { sequelize } = require('./models');
+const passportConfig = require('./passport');
 
 const app = express();
 
@@ -23,8 +29,25 @@ nunjucks.configure('views', {
   watch: true,
 });
 
+// 시퀄라이즈 연결
+// 시퀄라이즈는 promise이기 때문에 then, catch작성해주면 좋다.
+
+// force: true -> 테이블을 삭제했다가 다시 생성 (데이터 날아감.)
+// alter: true -> 데이터 유지하고 컬럼 바뀐거 반영 (컬럼과 기존 데이터들이 안맞아서 에러날 가능성이 있음.)
+sequelize.sync({ force: false })
+  .then(() => {
+    console.log('데이터베이스 연결 성공');
+  })
+  .catch((err) => {
+    console.error(err);
+  })
+
+// passport연결
+passportConfig()
+
 app.use(morgan('dev'));
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/img', express.static(path.join(__dirname, 'uploads')));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser(process.env.COOKIE_SECRET));
@@ -37,8 +60,17 @@ app.use(session({
     secure: false,
   },
 }));
+// express 세션보다 아래에 위치해야함.
+app.use(passport.initialize());
+app.use(passport.session());
 
 app.use('/', pageRouter);
+app.use('/auth', authRouter);
+app.use('/post', postRouter);
+// router.use() requires a middleware function but got a object
+// : app.use에 넣은 것이 middleware가 아닐 경우에 나타나는 에러
+app.use('/user', userRouter);
+
 
 // 404처리 미들웨어
 app.use((req, res, next) => {
